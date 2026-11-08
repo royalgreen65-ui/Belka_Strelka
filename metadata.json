@@ -1,0 +1,6 @@
+{
+  "name": "Belka and Strelka Expedition Dashboard",
+  "description": "Scientific dashboard for the Elite Dangerous Belka and Strelka Galactic Circumnavigation Expedition, tracking Fleet Carrier Space Tourist, 88 waypoints, and galactic telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
