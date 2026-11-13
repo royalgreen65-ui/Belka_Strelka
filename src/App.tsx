@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { Language, Waypoint } from './types';
+import { useState, useEffect, useMemo } from 'react';
+import { Language, Waypoint, NextCarrierTarget } from './types';
 import { INITIAL_WAYPOINTS, ALL_WAYPOINTS } from './data/expeditionData';
 import { Header } from './components/Header';
 import { HeroAnnouncement } from './components/HeroAnnouncement';
@@ -16,7 +16,17 @@ import { CommanderLog } from './components/CommanderLog';
 import { ExpeditionNewsfeed } from './components/ExpeditionNewsfeed';
 import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { WaypointModal } from './components/WaypointModal';
+import { WriteInWaypointModal } from './components/WriteInWaypointModal';
 import { Footer } from './components/Footer';
+
+const CUSTOM_WAYPOINTS_STORAGE_KEY = 'belka_custom_waypoints_v1';
+const CARRIER_TARGET_STORAGE_KEY = 'belka_carrier_target_v1';
+
+const DEFAULT_CARRIER_TARGET: NextCarrierTarget = {
+  anchorWaypointNum: 2,
+  nextWaypointNum: 3,
+  scheduledJumpIso: '2026-11-14T18:00:00Z',
+};
 
 export default function App() {
   const [currentLang, setCurrentLang] = useState<Language>(() => {
@@ -32,6 +42,40 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'waypoints' | 'map' | 'calc' | 'log' | 'news'>('waypoints');
   const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(null);
 
+  // Custom commander-submitted / updated waypoints map (keyed by waypoint num)
+  const [customWaypoints, setCustomWaypoints] = useState<Record<number, Waypoint>>(() => {
+    try {
+      const saved = localStorage.getItem(CUSTOM_WAYPOINTS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return {};
+  });
+
+  // Active Fleet Carrier anchor & next jump target
+  const [carrierTarget, setCarrierTarget] = useState<NextCarrierTarget>(() => {
+    try {
+      const saved = localStorage.getItem(CARRIER_TARGET_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.nextWaypointNum === 'number') {
+          return parsed;
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_CARRIER_TARGET;
+  });
+
+  // Write-In Modal state
+  const [writeModalOpen, setWriteModalOpen] = useState<boolean>(false);
+  const [writeModalSlotNum, setWriteModalSlotNum] = useState<number | null>(null);
+
   useEffect(() => {
     try {
       localStorage.setItem('belka_lang', currentLang);
@@ -40,13 +84,44 @@ export default function App() {
     }
   }, [currentLang]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(CUSTOM_WAYPOINTS_STORAGE_KEY, JSON.stringify(customWaypoints));
+    } catch {
+      // ignore
+    }
+  }, [customWaypoints]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CARRIER_TARGET_STORAGE_KEY, JSON.stringify(carrierTarget));
+    } catch {
+      // ignore
+    }
+  }, [carrierTarget]);
+
+  // Merge custom commander entries into initial (1-22) and full (1-88+) waypoint lists
+  const mergedInitialWaypoints = useMemo(() => {
+    return INITIAL_WAYPOINTS.map((wp) => customWaypoints[wp.num] ?? wp);
+  }, [customWaypoints]);
+
+  const mergedAllWaypoints = useMemo(() => {
+    const baseMerged = ALL_WAYPOINTS.map((wp) => customWaypoints[wp.num] ?? wp);
+    const maxBaseNum = ALL_WAYPOINTS.length;
+    const extraCustom = Object.values(customWaypoints)
+      .filter((wp) => wp.num > maxBaseNum)
+      .sort((a, b) => a.num - b.num);
+    return [...baseMerged, ...extraCustom];
+  }, [customWaypoints]);
+
+  const hasCustomEdits = Object.keys(customWaypoints).length > 0;
+
   const toggleLanguage = () => {
-    setCurrentLang(prev => (prev === 'en' ? 'ru' : 'en'));
+    setCurrentLang((prev) => (prev === 'en' ? 'ru' : 'en'));
   };
 
   const handleSelectTab = (tab: 'waypoints' | 'map' | 'calc' | 'log' | 'news') => {
     setActiveTab(tab);
-    // Smooth scroll down to workspace section for instant visibility
     setTimeout(() => {
       const el = document.getElementById('workspace-section');
       if (el) {
@@ -55,14 +130,49 @@ export default function App() {
     }, 50);
   };
 
-  const handleOpenCalculator = (wp: Waypoint) => {
+  const handleOpenCalculator = () => {
     handleSelectTab('calc');
     setSelectedWaypoint(null);
   };
 
+  const handleOpenWriteIn = (slotNum?: number) => {
+    setWriteModalSlotNum(slotNum ?? null);
+    setWriteModalOpen(true);
+  };
+
+  const handleSaveWaypoint = (
+    updatedWp: Waypoint,
+    setAsNextTarget: boolean,
+    scheduledJumpIso?: string
+  ) => {
+    setCustomWaypoints((prev) => ({
+      ...prev,
+      [updatedWp.num]: updatedWp,
+    }));
+
+    if (setAsNextTarget) {
+      setCarrierTarget((prev) => ({
+        ...prev,
+        nextWaypointNum: updatedWp.num,
+        scheduledJumpIso: scheduledJumpIso || prev.scheduledJumpIso,
+        updatedBy: updatedWp.submittedBy,
+      }));
+    }
+
+    // If the currently inspected modal waypoint matches, keep it synced
+    if (selectedWaypoint?.num === updatedWp.num) {
+      setSelectedWaypoint(updatedWp);
+    }
+  };
+
+  const handleResetCustomWaypoints = () => {
+    setCustomWaypoints({});
+    setCarrierTarget(DEFAULT_CARRIER_TARGET);
+  };
+
   return (
     <div className="min-h-screen bg-space-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
-      {/* Top Navigation / Header adhering to Top Bar contract */}
+      {/* Top Navigation / Header */}
       <Header
         currentLang={currentLang}
         onToggleLanguage={toggleLanguage}
@@ -72,14 +182,19 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
-        
         {/* Hero Announcement Section */}
         <HeroAnnouncement currentLang={currentLang} />
 
         {/* Expedition Summary & Live Timer Grid */}
-        <ExpeditionSummary currentLang={currentLang} />
+        <ExpeditionSummary
+          currentLang={currentLang}
+          waypoints={mergedAllWaypoints}
+          carrierTarget={carrierTarget}
+          onSelectTab={handleSelectTab}
+          onOpenWriteIn={handleOpenWriteIn}
+        />
 
-        {/* In-page Prominent Workspace Navigation Bar */}
+        {/* Workspace Navigation Bar */}
         <WorkspaceTabs
           activeTab={activeTab}
           onSelectTab={handleSelectTab}
@@ -90,33 +205,34 @@ export default function App() {
         {activeTab === 'waypoints' && (
           <WaypointsTable
             currentLang={currentLang}
-            initialWaypoints={INITIAL_WAYPOINTS}
-            allWaypoints={ALL_WAYPOINTS}
+            initialWaypoints={mergedInitialWaypoints}
+            allWaypoints={mergedAllWaypoints}
             onSelectWaypoint={setSelectedWaypoint}
             selectedWaypointNum={selectedWaypoint?.num}
+            nextTargetNum={carrierTarget.nextWaypointNum}
+            hasCustomEdits={hasCustomEdits}
+            onOpenWriteIn={handleOpenWriteIn}
+            onResetCustomWaypoints={handleResetCustomWaypoints}
           />
         )}
 
         {activeTab === 'map' && (
           <GalaxyMapVisualizer
             currentLang={currentLang}
-            waypoints={ALL_WAYPOINTS}
+            waypoints={mergedAllWaypoints}
             onSelectWaypoint={setSelectedWaypoint}
             selectedWaypointNum={selectedWaypoint?.num}
           />
         )}
 
         {activeTab === 'calc' && (
-          <RoutePlanner
-            currentLang={currentLang}
-            waypoints={ALL_WAYPOINTS}
-          />
+          <RoutePlanner currentLang={currentLang} waypoints={mergedAllWaypoints} />
         )}
 
         {activeTab === 'log' && (
           <CommanderLog
             currentLang={currentLang}
-            waypoints={ALL_WAYPOINTS}
+            waypoints={mergedAllWaypoints}
             onSelectWaypoint={setSelectedWaypoint}
           />
         )}
@@ -124,9 +240,11 @@ export default function App() {
         {activeTab === 'news' && (
           <ExpeditionNewsfeed
             currentLang={currentLang}
+            waypoints={mergedAllWaypoints}
+            carrierTarget={carrierTarget}
+            onOpenWriteIn={handleOpenWriteIn}
           />
         )}
-
       </main>
 
       {/* Waypoint Intelligence Modal */}
@@ -135,6 +253,18 @@ export default function App() {
         currentLang={currentLang}
         onClose={() => setSelectedWaypoint(null)}
         onOpenCalculator={handleOpenCalculator}
+        onEditWaypoint={(wp) => handleOpenWriteIn(wp.num)}
+      />
+
+      {/* Commander Write-In Next Waypoint Modal */}
+      <WriteInWaypointModal
+        isOpen={writeModalOpen}
+        currentLang={currentLang}
+        waypoints={mergedAllWaypoints}
+        initialSlotNum={writeModalSlotNum}
+        currentCarrierTarget={carrierTarget}
+        onClose={() => setWriteModalOpen(false)}
+        onSaveWaypoint={handleSaveWaypoint}
       />
 
       {/* Footer */}

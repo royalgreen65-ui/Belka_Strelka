@@ -17,6 +17,21 @@ export interface Waypoint {
   notableFeaturesRu?: string;
   exobiologyTypes?: string[];
   primaryStar?: string;
+  isCustomCmdrEntry?: boolean;
+  submittedBy?: string;
+  submittedAt?: string;
+  edsmVerified?: boolean;
+  edsmTrafficTotal?: number;
+  edsmTrafficWeek?: number;
+  edsmDiscoveryCmdr?: string;
+}
+
+export interface NextCarrierTarget {
+  anchorWaypointNum: number;
+  nextWaypointNum: number;
+  scheduledJumpIso: string;
+  updatedBy?: string;
+  notes?: string;
 }
 
 export type SortColumn = 'num' | 'system' | 'distance' | 'reached' | 'visited';
@@ -68,6 +83,15 @@ export interface NewsItem {
     tritiumTons: number;
     jumpState: string;
     nextJumpSchedule?: string;
+  };
+  liveEdsmData?: {
+    totalTraffic?: number;
+    weekTraffic?: number;
+    dayTraffic?: number;
+    discoveryCmdr?: string;
+    discoveryDate?: string;
+    starClass?: string;
+    shipBreakdown?: string[];
   };
   author: string;
   edsmUrl?: string;

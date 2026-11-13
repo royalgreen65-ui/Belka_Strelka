@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Waypoint, Language } from '../types';
 import { i18n } from '../data/i18n';
-import { X, Copy, Check, Compass, Sparkles, Navigation, Globe } from 'lucide-react';
+import { X, Copy, Check, Compass, Sparkles, Navigation, Globe, Edit3, User } from 'lucide-react';
 
 interface WaypointModalProps {
   waypoint: Waypoint | null;
   currentLang: Language;
   onClose: () => void;
   onOpenCalculator?: (wp: Waypoint) => void;
+  onEditWaypoint?: (wp: Waypoint) => void;
 }
 
 export const WaypointModal: React.FC<WaypointModalProps> = ({
@@ -15,6 +16,7 @@ export const WaypointModal: React.FC<WaypointModalProps> = ({
   currentLang,
   onClose,
   onOpenCalculator,
+  onEditWaypoint,
 }) => {
   if (!waypoint) return null;
 
@@ -33,7 +35,10 @@ export const WaypointModal: React.FC<WaypointModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
       <div
         className="bg-space-900 border border-space-700 w-full max-w-xl rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative"
         onClick={(e) => e.stopPropagation()}
@@ -41,16 +46,22 @@ export const WaypointModal: React.FC<WaypointModalProps> = ({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-space-800 transition-colors"
+          className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-space-800 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
         <div className="space-y-1">
-          <div className="flex items-center space-x-2 text-xs font-orbitron text-cyan-400 font-bold tracking-wider uppercase">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-orbitron text-cyan-400 font-bold tracking-wider uppercase">
             <Compass className="w-4 h-4" />
             <span>Waypoint #{waypoint.num} • {displayRegion}</span>
+            {waypoint.isCustomCmdrEntry && (
+              <span className="inline-flex items-center space-x-1 bg-orange-500/15 border border-orange-500/40 text-orange-300 px-2 py-0.5 rounded font-mono text-[10px]">
+                <User className="w-3 h-3" />
+                <span>{t.badgeCmdrEntry}: {waypoint.submittedBy || 'CMDR'}</span>
+              </span>
+            )}
           </div>
           <h3 className="font-orbitron text-2xl font-bold text-white tracking-wide">
             {displayName}
@@ -144,11 +155,23 @@ export const WaypointModal: React.FC<WaypointModalProps> = ({
             </button>
           ) : (
             <div className="text-xs text-slate-500 font-mono italic">
-              System name will be broadcast when carrier locks navigation.
+              Unannounced slot — commanders can write in system data.
             </div>
           )}
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onEditWaypoint && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditWaypoint(waypoint);
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs text-orange-300 hover:text-white bg-orange-500/15 hover:bg-orange-500/30 border border-orange-500/40 px-3.5 py-2 rounded-xl transition-colors cursor-pointer font-semibold"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>{t.modalEditWaypoint}</span>
+              </button>
+            )}
             {onOpenCalculator && waypoint.isAnnounced && (
               <button
                 onClick={() => {

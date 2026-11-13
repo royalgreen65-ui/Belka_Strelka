@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { NewsItem, NewsCategory, Language } from '../types';
-import { fetchExpeditionNews, EDSM_EXPEDITION_URL } from '../services/newsService';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { NewsItem, NewsCategory, Language, Waypoint, NextCarrierTarget } from '../types';
+import { fetchExpeditionNews, formatGameDate, EDSM_EXPEDITION_URL } from '../services/newsService';
 import { i18n } from '../data/i18n';
 import {
   Radio,
@@ -16,42 +16,63 @@ import {
   Sparkles,
   Share2,
   Check,
+  Activity,
+  Users,
+  PlusCircle,
+  Rocket,
 } from 'lucide-react';
 
 interface ExpeditionNewsfeedProps {
   currentLang: Language;
+  waypoints: Waypoint[];
+  carrierTarget: NextCarrierTarget;
+  onOpenWriteIn?: (slotNum?: number) => void;
 }
 
-export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentLang }) => {
+export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({
+  currentLang,
+  waypoints,
+  carrierTarget,
+  onOpenWriteIn,
+}) => {
   const t = i18n[currentLang];
 
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [lastSynced, setLastSynced] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Simulated API fetch
-  const loadNews = async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
-    else setLoading(true);
+  const loadNews = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setRefreshing(true);
+      else setLoading((prev) => (news.length === 0 ? true : prev));
 
-    try {
-      const data = await fetchExpeditionNews();
-      setNews(data);
-    } catch (err) {
-      console.error('Failed to fetch expedition news:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      try {
+        const data = await fetchExpeditionNews(waypoints, carrierTarget);
+        setNews(data);
+        setLastSynced(formatGameDate(new Date()));
+      } catch (err) {
+        console.error('Failed to fetch expedition news:', err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [waypoints, carrierTarget]
+  );
 
   useEffect(() => {
-    loadNews();
-  }, []);
+    loadNews(false);
+    // Auto-refresh every 60 seconds to keep day, countdown, and EDSM traffic live
+    const interval = setInterval(() => {
+      loadNews(false);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [loadNews]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -68,11 +89,9 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
   const filteredNews = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return news.filter((item) => {
-      // Category filter
       if (selectedCategory !== 'all' && item.category !== selectedCategory) {
         return false;
       }
-      // Search query
       if (!q) return true;
       const title = (currentLang === 'ru' ? item.titleRu : item.title).toLowerCase();
       const summary = (currentLang === 'ru' ? item.summaryRu : item.summary).toLowerCase();
@@ -87,19 +106,34 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
       {/* Header and Telemetry Link Banner */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Radio className="w-5 h-5 text-cyan-400 shrink-0" />
             <h3 className="font-orbitron text-lg sm:text-xl font-bold text-white tracking-wide">
               {t.newsTitle}
             </h3>
+            {lastSynced && (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{t.newsLastUpdated}: {lastSynced}</span>
+              </span>
+            )}
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            {t.newsSub}
-          </p>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">{t.newsSub}</p>
         </div>
 
-        {/* Action Controls: Refresh & Direct EDSM Link */}
+        {/* Action Controls: Write In, EDSM Link & Refresh */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {onOpenWriteIn && (
+            <button
+              type="button"
+              onClick={() => onOpenWriteIn()}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-space-800 hover:bg-space-750 text-orange-300 border border-orange-500/40 hover:border-orange-400 transition-colors cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-orange-400" />
+              <span>{t.writeInBtn}</span>
+            </button>
+          )}
+
           <a
             href={EDSM_EXPEDITION_URL}
             target="_blank"
@@ -111,6 +145,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
           </a>
 
           <button
+            type="button"
             onClick={() => loadNews(true)}
             disabled={refreshing || loading}
             className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white transition-all shadow-sm cursor-pointer disabled:opacity-50"
@@ -123,9 +158,9 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-        {/* Category Filter Segments */}
         <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0">
           <button
+            type="button"
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               selectedCategory === 'all'
@@ -136,6 +171,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
             {t.newsFilterAll}
           </button>
           <button
+            type="button"
             onClick={() => setSelectedCategory('carrier')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               selectedCategory === 'carrier'
@@ -146,6 +182,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
             {t.newsFilterCarrier}
           </button>
           <button
+            type="button"
             onClick={() => setSelectedCategory('discovery')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               selectedCategory === 'discovery'
@@ -156,6 +193,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
             {t.newsFilterDiscovery}
           </button>
           <button
+            type="button"
             onClick={() => setSelectedCategory('operations')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               selectedCategory === 'operations'
@@ -166,6 +204,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
             {t.newsFilterOps}
           </button>
           <button
+            type="button"
             onClick={() => setSelectedCategory('edsm')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               selectedCategory === 'edsm'
@@ -211,7 +250,6 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
           No dispatches matching current filter parameters.
         </div>
       ) : (
-        /* Newsfeed List */
         <div className="space-y-4">
           {filteredNews.map((item) => {
             const isExpanded = !!expandedIds[item.id];
@@ -226,20 +264,29 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
                 key={item.id}
                 className={`bg-space-850 border rounded-xl p-5 sm:p-6 transition-all space-y-3 ${
                   item.isPinned
-                    ? 'border-orange-500/40 bg-gradient-to-br from-space-850 to-space-900 shadow-md'
+                    ? 'border-orange-500/40 bg-gradient-to-br from-space-850 to-space-900 shadow-md ring-1 ring-orange-500/20'
                     : 'border-space-700/80 hover:border-space-600'
                 }`}
               >
-                {/* Top Meta Line: Timestamp & Category Tag */}
+                {/* Top Meta Line */}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
                   <div className="flex items-center space-x-2 font-mono">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
                     <span className="text-slate-300 font-medium tabular-nums">{item.gameDate}</span>
-                    <span aria-hidden="true" className="text-slate-600">·</span>
+                    <span aria-hidden="true" className="text-slate-600">
+                      ·
+                    </span>
                     <span className="text-slate-400">{item.author}</span>
                   </div>
 
                   <div className="flex items-center space-x-2">
+                    {item.liveEdsmData && (
+                      <span className="hidden sm:inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                        <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
+                        <span>{t.newsLiveEdsmBadge}</span>
+                      </span>
+                    )}
+
                     {item.isPinned && (
                       <span className="text-[11px] font-semibold text-orange-400 bg-orange-500/10 border border-orange-500/30 px-2 py-0.5 rounded">
                         {t.newsPinned}
@@ -251,19 +298,17 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
                   </div>
                 </div>
 
-                {/* Article Headline */}
+                {/* Headline */}
                 <h4 className="font-orbitron text-base sm:text-lg font-bold text-white tracking-wide leading-snug">
                   {title}
                 </h4>
 
                 {/* Summary */}
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  {summary}
-                </p>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{summary}</p>
 
-                {/* System & Carrier Stats Strip if available */}
-                {(item.system || item.region || item.carrierStatus) && (
-                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-300">
+                {/* System, Live EDSM Stats & Carrier Strip */}
+                {(item.system || item.region || item.carrierStatus || item.liveEdsmData) && (
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1 text-xs text-slate-300">
                     {item.system && (
                       <div className="flex items-center space-x-1.5 bg-space-800/80 px-2.5 py-1 rounded-lg border border-space-700 font-mono">
                         <MapPin className="w-3.5 h-3.5 text-orange-400" />
@@ -281,9 +326,39 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
                     {item.carrierStatus && (
                       <div className="flex items-center space-x-1.5 bg-space-800/80 px-2.5 py-1 rounded-lg border border-space-700 font-mono text-amber-400">
                         <Fuel className="w-3.5 h-3.5 text-amber-400" />
-                        <span>{t.newsCarrierFuel}: {item.carrierStatus.tritiumTons.toLocaleString()} T</span>
+                        <span>
+                          {t.newsCarrierFuel}: {item.carrierStatus.tritiumTons.toLocaleString()} T
+                        </span>
                       </div>
                     )}
+
+                    {item.liveEdsmData?.totalTraffic !== undefined && (
+                      <div className="flex items-center space-x-1.5 bg-space-800/80 px-2.5 py-1 rounded-lg border border-space-700 font-mono text-cyan-300">
+                        <Users className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>
+                          {t.newsEdsmTraffic}: {item.liveEdsmData.totalTraffic}
+                          {item.liveEdsmData.weekTraffic !== undefined
+                            ? ` (+${item.liveEdsmData.weekTraffic} ${t.newsEdsmWeekTraffic.toLowerCase()})`
+                            : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    {item.liveEdsmData?.discoveryCmdr && (
+                      <div className="flex items-center space-x-1.5 bg-space-800/80 px-2.5 py-1 rounded-lg border border-space-700 font-mono text-slate-400">
+                        <span>
+                          {t.newsEdsmDiscoveredBy}: {item.liveEdsmData.discoveryCmdr}
+                        </span>
+                      </div>
+                    )}
+
+                    {item.liveEdsmData?.shipBreakdown &&
+                      item.liveEdsmData.shipBreakdown.length > 0 && (
+                        <div className="flex items-center space-x-1.5 bg-space-800/80 px-2.5 py-1 rounded-lg border border-space-700 font-mono text-emerald-300">
+                          <Rocket className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{item.liveEdsmData.shipBreakdown.join(' · ')}</span>
+                        </div>
+                      )}
                   </div>
                 )}
 
@@ -295,7 +370,9 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
                     {item.carrierStatus?.nextJumpSchedule && (
                       <div className="flex items-center space-x-2 text-xs font-mono text-cyan-400 pt-2 border-t border-space-800">
                         <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>{t.newsNextJump}: {item.carrierStatus.nextJumpSchedule}</span>
+                        <span>
+                          {t.newsNextJump}: {item.carrierStatus.nextJumpSchedule}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -304,6 +381,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
                 {/* Card Action Footer */}
                 <div className="flex items-center justify-between pt-2">
                   <button
+                    type="button"
                     onClick={() => toggleExpand(item.id)}
                     className="inline-flex items-center space-x-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                   >
@@ -317,6 +395,7 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
 
                   <div className="flex items-center space-x-2">
                     <button
+                      type="button"
                       onClick={() => handleShare(item)}
                       className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-slate-200 bg-space-800 hover:bg-space-750 px-2.5 py-1 rounded-lg border border-space-700 transition-colors cursor-pointer"
                       title="Copy dispatch link"
@@ -356,12 +435,10 @@ export const ExpeditionNewsfeed: React.FC<ExpeditionNewsfeedProps> = ({ currentL
       {/* Subspace Link Telemetry Footer */}
       <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 font-mono pt-3 border-t border-space-800 gap-2">
         <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
           <span>{t.newsStatus}</span>
         </div>
-        <div>
-          Official EDSM Expedition ID: 229 • Fleet Carrier Space Tourist (J7Q-9KY)
-        </div>
+        <div>Official EDSM Expedition ID: 229 • Fleet Carrier Space Tourist (J7Q-9KY)</div>
       </div>
     </section>
   );

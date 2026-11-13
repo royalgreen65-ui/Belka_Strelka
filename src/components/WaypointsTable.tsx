@@ -1,7 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { Waypoint, Language, SortColumn, SortDirection } from '../types';
 import { i18n } from '../data/i18n';
-import { Search, MapPin, ArrowUpDown, Copy, Check, Info } from 'lucide-react';
+import {
+  Search,
+  MapPin,
+  ArrowUpDown,
+  Copy,
+  Check,
+  Info,
+  PlusCircle,
+  Edit3,
+  RotateCcw,
+} from 'lucide-react';
 
 interface WaypointsTableProps {
   currentLang: Language;
@@ -9,6 +19,10 @@ interface WaypointsTableProps {
   allWaypoints: Waypoint[];
   onSelectWaypoint: (wp: Waypoint) => void;
   selectedWaypointNum?: number;
+  nextTargetNum?: number;
+  hasCustomEdits?: boolean;
+  onOpenWriteIn?: (slotNum?: number) => void;
+  onResetCustomWaypoints?: () => void;
 }
 
 export const WaypointsTable: React.FC<WaypointsTableProps> = ({
@@ -17,6 +31,10 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
   allWaypoints,
   onSelectWaypoint,
   selectedWaypointNum,
+  nextTargetNum,
+  hasCustomEdits,
+  onOpenWriteIn,
+  onResetCustomWaypoints,
 }) => {
   const t = i18n[currentLang];
 
@@ -31,7 +49,7 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
 
   const handleSort = (col: SortColumn) => {
     if (sortColumn === col) {
-      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortColumn(col);
       setSortDirection('asc');
@@ -49,7 +67,7 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
   const processedData = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    const filtered = activeDataset.filter(wp => {
+    const filtered = activeDataset.filter((wp) => {
       // Status filter
       if (filterType === 'announced' && !wp.isAnnounced) return false;
       if (filterType === 'tba' && wp.isAnnounced) return false;
@@ -58,7 +76,9 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
       if (!query) return true;
       const numMatch = wp.num.toString() === query;
       const sysMatch = wp.system.toLowerCase().includes(query);
-      const regMatch = wp.region.toLowerCase().includes(query) || (wp.regionRu && wp.regionRu.toLowerCase().includes(query));
+      const regMatch =
+        wp.region.toLowerCase().includes(query) ||
+        (wp.regionRu && wp.regionRu.toLowerCase().includes(query));
       return numMatch || sysMatch || regMatch;
     });
 
@@ -98,18 +118,47 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
           <div className="flex items-center space-x-2">
             <MapPin className="w-5 h-5 text-orange-400 shrink-0" />
             <h3 className="font-orbitron text-lg sm:text-xl font-bold text-white tracking-wide">
-              {t.waypointsTitle} {viewScope === 'initial' ? '(1 - 22)' : `(1 - ${allWaypoints.length})`}
+              {t.waypointsTitle}{' '}
+              {viewScope === 'initial'
+                ? `(1 - ${initialWaypoints.length})`
+                : `(1 - ${allWaypoints.length})`}
             </h3>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            {t.waypointsSub}
-          </p>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">{t.waypointsSub}</p>
         </div>
 
-        {/* View Scope Toggle (1-22 vs 1-88) */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons + View Scope Toggle */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {onOpenWriteIn && (
+            <button
+              type="button"
+              onClick={() => onOpenWriteIn()}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-sm transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>{t.writeInBtn}</span>
+            </button>
+          )}
+
+          {hasCustomEdits && onResetCustomWaypoints && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(t.writeModalResetConfirm)) {
+                  onResetCustomWaypoints();
+                }
+              }}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 text-xs font-medium rounded-xl bg-space-800 hover:bg-space-750 text-slate-400 hover:text-rose-400 border border-space-700 hover:border-rose-500/40 transition-colors cursor-pointer"
+              title={t.writeModalResetBtn}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t.writeModalResetBtn}</span>
+            </button>
+          )}
+
           <div className="bg-space-800/90 border border-space-700 p-1 rounded-xl flex items-center">
             <button
+              type="button"
               onClick={() => setViewScope('initial')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                 viewScope === 'initial'
@@ -120,6 +169,7 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
               {t.viewModeInitial}
             </button>
             <button
+              type="button"
               onClick={() => setViewScope('full')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                 viewScope === 'full'
@@ -135,9 +185,10 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Filter Pills / Segments */}
+        {/* Filter Segments */}
         <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0">
           <button
+            type="button"
             onClick={() => setFilterType('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               filterType === 'all'
@@ -148,6 +199,7 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
             {t.filterAll}
           </button>
           <button
+            type="button"
             onClick={() => setFilterType('announced')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               filterType === 'announced'
@@ -158,6 +210,7 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
             {t.filterAnnounced}
           </button>
           <button
+            type="button"
             onClick={() => setFilterType('tba')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               filterType === 'tba'
@@ -189,7 +242,6 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-space-800 bg-space-900/90 text-xs font-orbitron text-slate-400 uppercase tracking-wider">
-              {/* Column: # */}
               <th
                 onClick={() => handleSort('num')}
                 className="py-3.5 px-4 cursor-pointer hover:text-cyan-400 transition-colors select-none whitespace-nowrap"
@@ -200,7 +252,6 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                 </div>
               </th>
 
-              {/* Column: System */}
               <th
                 onClick={() => handleSort('system')}
                 className="py-3.5 px-4 cursor-pointer hover:text-cyan-400 transition-colors select-none whitespace-nowrap"
@@ -211,12 +262,10 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                 </div>
               </th>
 
-              {/* Column: Region */}
               <th className="py-3.5 px-4 select-none whitespace-nowrap hidden md:table-cell">
                 <span>{t.colRegion}</span>
               </th>
 
-              {/* Column: Distance */}
               <th
                 onClick={() => handleSort('distance')}
                 className="py-3.5 px-4 cursor-pointer hover:text-cyan-400 transition-colors select-none whitespace-nowrap"
@@ -227,7 +276,6 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                 </div>
               </th>
 
-              {/* Column: Reached % */}
               <th
                 onClick={() => handleSort('reached')}
                 className="py-3.5 px-4 cursor-pointer hover:text-cyan-400 transition-colors select-none whitespace-nowrap"
@@ -238,7 +286,6 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                 </div>
               </th>
 
-              {/* Column: Visited % */}
               <th
                 onClick={() => handleSort('visited')}
                 className="py-3.5 px-4 cursor-pointer hover:text-cyan-400 transition-colors select-none whitespace-nowrap"
@@ -249,7 +296,6 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                 </div>
               </th>
 
-              {/* Column: Actions */}
               <th className="py-3.5 px-4 text-right select-none whitespace-nowrap">
                 <span>{t.colActions}</span>
               </th>
@@ -266,8 +312,11 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
             ) : (
               processedData.map((wp) => {
                 const isSelected = selectedWaypointNum === wp.num;
-                const displayName = (!wp.isAnnounced && currentLang === 'ru') ? 'Будет объявлено' : wp.system;
-                const displayRegion = (currentLang === 'ru' && wp.regionRu) ? wp.regionRu : wp.region;
+                const isNextTarget = nextTargetNum === wp.num;
+                const displayName =
+                  !wp.isAnnounced && currentLang === 'ru' ? 'Будет объявлено' : wp.system;
+                const displayRegion =
+                  currentLang === 'ru' && wp.regionRu ? wp.regionRu : wp.region;
                 const isCopied = copiedSystem === wp.system;
 
                 return (
@@ -277,25 +326,48 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
                     className={`transition-colors cursor-pointer group ${
                       isSelected
                         ? 'bg-cyan-950/30 border-l-2 border-l-cyan-400'
-                        : 'hover:bg-space-800/50'
+                        : isNextTarget
+                          ? 'bg-orange-950/15 border-l-2 border-l-orange-500/80 hover:bg-space-800/50'
+                          : 'hover:bg-space-800/50'
                     }`}
                   >
                     {/* # */}
-                    <td className="py-3.5 px-4 font-orbitron font-semibold text-cyan-400 tabular-nums">
+                    <td className="py-3.5 px-4 font-orbitron font-semibold text-cyan-400 tabular-nums whitespace-nowrap">
                       #{wp.num}
                     </td>
 
                     {/* System Name */}
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center space-x-2">
-                        <span className={`font-medium ${wp.isAnnounced ? 'text-slate-100 font-semibold' : 'text-slate-400 italic'}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`font-medium ${
+                            wp.isAnnounced ? 'text-slate-100 font-semibold' : 'text-slate-400 italic'
+                          }`}
+                        >
                           {displayName}
                         </span>
+
+                        {isNextTarget && (
+                          <span className="text-[10px] font-mono font-semibold text-orange-300 bg-orange-500/15 border border-orange-500/40 px-1.5 py-0.5 rounded">
+                            {t.badgeNextTarget}
+                          </span>
+                        )}
+
+                        {wp.isCustomCmdrEntry && (
+                          <span
+                            className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded"
+                            title={wp.submittedBy ? `Submitted by ${wp.submittedBy}` : undefined}
+                          >
+                            {t.badgeCmdrEntry}
+                          </span>
+                        )}
+
                         {wp.isAnnounced && (
                           <button
+                            type="button"
                             onClick={(e) => handleCopy(e, wp.system)}
                             title="Copy system name for in-game galaxy map"
-                            className="text-slate-500 hover:text-cyan-400 opacity-60 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-space-700/60"
+                            className="text-slate-500 hover:text-cyan-400 opacity-60 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-space-700/60 cursor-pointer"
                           >
                             {isCopied ? (
                               <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -309,46 +381,60 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
 
                     {/* Region */}
                     <td className="py-3.5 px-4 text-slate-400 hidden md:table-cell">
-                      <span className="truncate max-w-[180px] inline-block">
-                        {displayRegion}
-                      </span>
+                      <span className="truncate max-w-[180px] inline-block">{displayRegion}</span>
                     </td>
 
                     {/* Distance from Start */}
-                    <td className="py-3.5 px-4 text-slate-300 font-mono tabular-nums">
+                    <td className="py-3.5 px-4 text-slate-300 font-mono tabular-nums whitespace-nowrap">
                       {wp.distanceStr}
                     </td>
 
                     {/* Reached % */}
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-slate-200 tabular-nums">
-                          {wp.reached}
-                        </span>
-                      </div>
+                      <span className="font-semibold text-slate-200 tabular-nums">{wp.reached}</span>
                     </td>
 
                     {/* Visited % */}
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-amber-400 tabular-nums">
-                          {wp.visited}
-                        </span>
-                      </div>
+                      <span className="font-semibold text-amber-400 tabular-nums">
+                        {wp.visited}
+                      </span>
                     </td>
 
                     {/* Actions */}
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectWaypoint(wp);
-                        }}
-                        className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-cyan-400 px-2 py-1 rounded bg-space-800 hover:bg-space-750 transition-colors border border-space-700"
-                      >
-                        <Info className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Info</span>
-                      </button>
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5">
+                        {onOpenWriteIn && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenWriteIn(wp.num);
+                            }}
+                            title={t.modalEditWaypoint}
+                            className={`inline-flex items-center space-x-1 text-xs px-2 py-1 rounded border transition-colors cursor-pointer ${
+                              !wp.isAnnounced
+                                ? 'bg-orange-500/15 hover:bg-orange-500/30 text-orange-300 border-orange-500/40'
+                                : 'bg-space-800 hover:bg-space-750 text-slate-400 hover:text-orange-300 border-space-700'
+                            }`}
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            {!wp.isAnnounced && <span className="hidden sm:inline">Write In</span>}
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectWaypoint(wp);
+                          }}
+                          className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-cyan-400 px-2 py-1 rounded bg-space-800 hover:bg-space-750 transition-colors border border-space-700 cursor-pointer"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Info</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -361,10 +447,11 @@ export const WaypointsTable: React.FC<WaypointsTableProps> = ({
       {/* Bottom Status / Count Info */}
       <div className="flex items-center justify-between text-xs text-slate-400 font-mono pt-2">
         <span>
-          {t.filterShowing} {processedData.length} {t.filterOf} {activeDataset.length} {t.filterWaypointsSuffix}
+          {t.filterShowing} {processedData.length} {t.filterOf} {activeDataset.length}{' '}
+          {t.filterWaypointsSuffix}
         </span>
         <span className="hidden sm:inline">
-          Click any waypoint to inspect galactic coordinates & exobiology data
+          Click any waypoint to inspect coordinates or write in upcoming systems
         </span>
       </div>
     </section>
